@@ -58,8 +58,12 @@ npx wrangler d1 migrations apply atajo-db --remote
 
 ```bash
 npx wrangler secret put TAVILY_API_KEY   # live web_search
-npx wrangler secret put SESSION_SECRET  # optional
+npx wrangler secret put SESSION_SECRET  # HMAC-sign session cookies (recommended in prod)
 ```
+
+Optional vars (wrangler `vars` or `.dev.vars`):
+
+- `ALLOWED_ORIGINS` — comma-separated extra CORS origins (same-origin Worker UI is always allowed)
 
 3. Deploy:
 
