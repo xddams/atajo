@@ -7,8 +7,13 @@ export interface Env {
   APP_NAME: string;
   SESSION_TTL_DAYS: string;
   AI_MODEL: string;
-  /** Optional: override session signing. Falls back to derived local secret. */
+  /**
+   * HMAC secret for signing session cookies. When set, cookies are
+   * `sessionId.signature` and must validate before D1 lookup.
+   */
   SESSION_SECRET?: string;
+  /** Comma-separated extra origins allowed for credentialed CORS (same-origin always allowed). */
+  ALLOWED_ORIGINS?: string;
   /** Optional Tavily key for live web_search. */
   TAVILY_API_KEY?: string;
 }

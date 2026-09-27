@@ -10,7 +10,7 @@
     "db:migrate:local": "wrangler d1 migrations apply atajo-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply atajo-db --remote",
     "types": "wrangler types",
-    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "check": "wrangler types && tsc --noEmit && wrangler deploy --dry-run",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {

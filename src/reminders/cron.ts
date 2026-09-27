@@ -1,21 +1,13 @@
 import type { Env } from "../lib/types";
-import { dueReminders, insertMessage, updateReminderStatus } from "../db/queries";
-import { nowIso } from "../lib/util";
+import { dueReminders, fireReminderAtomically } from "../db/queries";
 
 /** Cron: fire due reminders into the user's HOME chat as assistant messages. */
 export async function fireDueReminders(env: Env): Promise<number> {
   const due = await dueReminders(env.DB);
   let n = 0;
   for (const r of due) {
-    await updateReminderStatus(env.DB, r.id, "fired", nowIso());
-    await insertMessage(
-      env.DB,
-      r.user_id,
-      "assistant",
-      `⏰ Reminder: ${r.body}`,
-      { reminder_id: r.id, kind: "reminder_fired" },
-    );
-    n++;
+    const fired = await fireReminderAtomically(env.DB, r);
+    if (fired) n++;
   }
   return n;
 }
