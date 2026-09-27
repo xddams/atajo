@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atajo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="drawer" class="drawer" hidden>
+        <header class="drawer-head">
+          <strong>Atajo</strong>
+          <button type="button" id="drawer-close" aria-label="Close">✕</button>
+        </header>
+        <section>
+          <h2>Reminders</h2>
+          <ul id="reminder-list"></ul>
+        </section>
+        <section>
+          <h2>Memory</h2>
+          <ul id="memory-list"></ul>
+        </section>
+        <section>
+          <h2>Connectors</h2>
+          <ul id="connector-list"></ul>
+        </section>
+        <section>
+          <h2>Pending</h2>
+          <ul id="pending-list"></ul>
+        </section>
+        <footer class="drawer-foot">
+          <button type="button" id="radar-btn">Radar-lite check</button>
+          <button type="button" id="logout-btn">Sign out</button>
+        </footer>
+      </aside>
+
+      <main class="shell">
+        <header class="top">
+          <button type="button" id="menu-btn" aria-label="Menu">☰</button>
+          <div class="brand">
+            <span class="brand-mark">Atajo</span>
+            <span class="brand-sub">HOME</span>
+          </div>
+          <span id="user-chip" class="user-chip"></span>
+        </header>
+
+        <section id="auth" class="auth panel" hidden>
+          <h1>Atajo</h1>
+          <p class="lede">Your calm shortcut — chat that remembers and acts with care.</p>
+          <form id="auth-form">
+            <label>
+              Email
+              <input name="email" type="email" required autocomplete="email" />
+            </label>
+            <label>
+              Password
+              <input name="password" type="password" required minlength="8" autocomplete="current-password" />
+            </label>
+            <label class="optional">
+              Display name (register)
+              <input name="display_name" type="text" autocomplete="nickname" />
+            </label>
+            <p id="auth-error" class="error" hidden></p>
+            <div class="auth-actions">
+              <button type="submit" data-mode="login">Sign in</button>
+              <button type="submit" data-mode="register" class="ghost">Create account</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="chat" class="chat" hidden>
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <div id="progress" class="progress" hidden></div>
+          <form id="composer" class="composer">
+            <input
+              id="composer-input"
+              type="text"
+              placeholder="Ask me anything"
+              autocomplete="off"
+              maxlength="4000"
+            />
+            <button type="submit" id="send-btn">Send</button>
+          </form>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
