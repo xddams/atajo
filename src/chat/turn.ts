@@ -32,6 +32,7 @@ type ToolCall = {
 
 type AiChatResponse = {
   response?: string;
+  output_text?: string;
   tool_calls?: ToolCall[];
   choices?: Array<{
     message?: {
@@ -54,8 +55,25 @@ function extractAssistant(res: AiChatResponse): {
     };
   }
   return {
-    content: (res.response ?? "").toString(),
+    content: (res.output_text ?? res.response ?? "").toString(),
     toolCalls: res.tool_calls ?? [],
+  };
+}
+
+function aiRunParams(model: string, messages: AiMessage[]): Record<string, unknown> {
+  const tools = toolsForAi();
+  // OpenAI third-party models on Workers AI prefer Chat Completions field names.
+  if (model.startsWith("openai/")) {
+    return {
+      messages,
+      tools,
+      max_completion_tokens: 1024,
+    };
+  }
+  return {
+    messages,
+    tools,
+    max_tokens: 1024,
   };
 }
 
@@ -177,16 +195,15 @@ export async function runChatTurn(
       })),
   ];
 
-  const model = env.AI_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+  const model = env.AI_MODEL || "openai/gpt-6-luna";
   const maxLoops = 4;
 
   try {
     for (let i = 0; i < maxLoops; i++) {
-      const raw = (await env.AI.run(model as Parameters<Ai["run"]>[0], {
-        messages,
-        tools: toolsForAi(),
-        max_tokens: 1024,
-      } as Record<string, unknown>)) as AiChatResponse;
+      const raw = (await env.AI.run(
+        model as Parameters<Ai["run"]>[0],
+        aiRunParams(model, messages),
+      )) as AiChatResponse;
 
       const { content, toolCalls } = extractAssistant(raw);
 
