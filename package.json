@@ -1,0 +1,25 @@
+{
+  "name": "atajo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atajo — personal AI assistant on Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply atajo-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply atajo-db --remote",
+    "types": "wrangler types",
+    "check": "tsc --noEmit && wrangler deploy --dry-run",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.13.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260927.1",
+    "@types/node": "^26.6.3",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.141.0"
+  }
+}
