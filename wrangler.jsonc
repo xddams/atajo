@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "atajo-db",
-      "database_id": "local-atajo-db",
+      "database_id": "ed5565be-9bb6-43d5-a746-5919532ff60c",
       "migrations_dir": "migrations"
     }
   ],
