@@ -21,6 +21,7 @@ type AiMessage = {
   content: string;
   tool_call_id?: string;
   name?: string;
+  tool_calls?: ToolCall[];
 };
 
 type ToolCall = {
@@ -193,6 +194,7 @@ export async function runChatTurn(
         messages.push({
           role: "assistant",
           content: content || "",
+          tool_calls: toolCalls,
         });
 
         for (const call of toolCalls) {
@@ -244,15 +246,20 @@ export async function runChatTurn(
     return { reply: fallback, events, usedTools };
   } catch (err) {
     // Local/dev without AI binding, or model error — heuristic path.
-    const heur = await heuristicTurn(env, userId, userText, events);
-    if (heur) {
-      await insertMessage(env.DB, userId, "assistant", heur.reply);
-      events.push({ type: "final", text: heur.reply });
-      return heur;
+    // Skip heuristics if any tool already ran to avoid duplicating side effects.
+    if (usedTools.length === 0) {
+      const heur = await heuristicTurn(env, userId, userText, events);
+      if (heur) {
+        await insertMessage(env.DB, userId, "assistant", heur.reply);
+        events.push({ type: "final", text: heur.reply });
+        return heur;
+      }
     }
     const msg =
       err instanceof Error
-        ? `AI unavailable (${err.message}). You can still set reminders like “remind me in 1 minute to stretch”.`
+        ? usedTools.length > 0
+          ? `I ran ${usedTools.join(", ")} but the model loop failed (${err.message}). Check your chat for results — I did not retry those tools.`
+          : `AI unavailable (${err.message}). You can still set reminders like “remind me in 1 minute to stretch”.`
         : "AI unavailable.";
     await insertMessage(env.DB, userId, "assistant", msg);
     events.push({ type: "error", text: msg });
