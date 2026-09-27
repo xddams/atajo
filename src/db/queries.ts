@@ -114,10 +114,13 @@ export async function listMessages(
 > {
   const { results } = await db
     .prepare(
-      `SELECT id, role, content, meta_json, created_at FROM messages
-       WHERE user_id = ? AND role != 'system'
-       ORDER BY created_at ASC
-       LIMIT ?`,
+      `SELECT id, role, content, meta_json, created_at FROM (
+         SELECT id, role, content, meta_json, created_at FROM messages
+         WHERE user_id = ? AND role != 'system'
+         ORDER BY created_at DESC
+         LIMIT ?
+       )
+       ORDER BY created_at ASC`,
     )
     .bind(userId, limit)
     .all<{
@@ -247,6 +250,45 @@ export async function updateReminderStatus(
     .run();
 }
 
+/**
+ * Atomically mark a reminder fired and insert its chat message.
+ * Uses a deterministic message id so retries are idempotent.
+ * Returns true only when this call transitioned the reminder from scheduled→fired.
+ */
+export async function fireReminderAtomically(
+  db: D1Database,
+  reminder: ReminderRow,
+): Promise<boolean> {
+  const firedAt = nowIso();
+  const messageId = `reminder-fired:${reminder.id}`;
+  const meta = JSON.stringify({
+    reminder_id: reminder.id,
+    kind: "reminder_fired",
+  });
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE reminders SET status = 'fired', fired_at = ?
+         WHERE id = ? AND status = 'scheduled'`,
+      )
+      .bind(firedAt, reminder.id),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO messages (id, user_id, role, content, meta_json, created_at)
+         VALUES (?, ?, 'assistant', ?, ?, ?)`,
+      )
+      .bind(
+        messageId,
+        reminder.user_id,
+        `⏰ Reminder: ${reminder.body}`,
+        meta,
+        firedAt,
+      ),
+  ]);
+  const changes = results[0]?.meta?.changes ?? 0;
+  return changes > 0;
+}
+
 export async function dueReminders(db: D1Database): Promise<ReminderRow[]> {
   const { results } = await db
     .prepare(
@@ -309,18 +351,17 @@ export async function resolvePendingAction(
   id: string,
   status: "approved" | "rejected" | "executed",
 ): Promise<PendingActionRow | null> {
+  const resolvedAt = nowIso();
+  // Single atomic transition: only pending rows may be resolved.
   const row = await db
-    .prepare(`SELECT * FROM pending_actions WHERE id = ? AND user_id = ?`)
-    .bind(id, userId)
-    .first<PendingActionRow>();
-  if (!row) return null;
-  await db
     .prepare(
-      `UPDATE pending_actions SET status = ?, resolved_at = ? WHERE id = ?`,
+      `UPDATE pending_actions SET status = ?, resolved_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'pending'
+       RETURNING *`,
     )
-    .bind(status, nowIso(), id)
-    .run();
-  return { ...row, status, resolved_at: nowIso() };
+    .bind(status, resolvedAt, id, userId)
+    .first<PendingActionRow>();
+  return row ?? null;
 }
 
 export async function memorySnapshot(

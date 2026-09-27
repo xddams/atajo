@@ -26,7 +26,30 @@ import { nowIso } from "./lib/util";
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-app.use("/api/*", cors({ origin: (o) => o || "*", credentials: true }));
+/** Credentialed CORS: same-origin Worker UI plus optional ALLOWED_ORIGINS. */
+function allowedCorsOrigin(origin: string, c: { req: { url: string }; env: Env }): string | undefined {
+  if (!origin) return undefined;
+  let selfOrigin = "";
+  try {
+    selfOrigin = new URL(c.req.url).origin;
+  } catch {
+    /* ignore */
+  }
+  if (origin === selfOrigin) return origin;
+  const extras = (c.env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return extras.includes(origin) ? origin : undefined;
+}
+
+app.use(
+  "/api/*",
+  cors({
+    origin: (origin, c) => allowedCorsOrigin(origin, c),
+    credentials: true,
+  }),
+);
 
 app.get("/api/health", (c) =>
   c.json({
@@ -61,7 +84,7 @@ app.post("/api/auth/register", async (c) => {
       body.password,
       body.display_name,
     );
-    setSessionCookie(c, sessionId);
+    await setSessionCookie(c, sessionId);
     return c.json({
       user: { id: user.id, email: user.email, display_name: user.display_name },
     });
@@ -81,7 +104,7 @@ app.post("/api/auth/login", async (c) => {
   }
   try {
     const { user, sessionId } = await login(c.env, body.email, body.password);
-    setSessionCookie(c, sessionId);
+    await setSessionCookie(c, sessionId);
     return c.json({
       user: { id: user.id, email: user.email, display_name: user.display_name },
     });
@@ -183,23 +206,17 @@ app.post("/api/pending/:id/resolve", requireUser, async (c) => {
   }
   const actionId = c.req.param("id");
   if (!actionId) return c.json({ error: "missing id" }, 400);
-  const status = decision === "approve" ? "approved" : "rejected";
+  // MVP: approval lands as executed for stubs (single atomic pending→final transition).
+  const finalStatus = decision === "approve" ? "executed" : "rejected";
   const row = await resolvePendingAction(
     c.env.DB,
     c.get("user").id,
     actionId,
-    status,
+    finalStatus,
   );
-  if (!row) return c.json({ error: "not found" }, 404);
+  if (!row) return c.json({ error: "not found or already resolved" }, 404);
 
-  // MVP: approval marks executed for stubs without calling external APIs.
-  if (status === "approved") {
-    await resolvePendingAction(
-      c.env.DB,
-      c.get("user").id,
-      actionId,
-      "executed",
-    );
+  if (finalStatus === "executed") {
     await insertMessage(
       c.env.DB,
       c.get("user").id,
@@ -216,7 +233,7 @@ app.post("/api/pending/:id/resolve", requireUser, async (c) => {
       { pending_action_id: row.id, decision: "rejected" },
     );
   }
-  return c.json({ ok: true, status: status === "approved" ? "executed" : "rejected" });
+  return c.json({ ok: true, status: finalStatus });
 });
 
 app.get("/api/connectors", requireUser, (c) => c.json({ connectors: connectorCatalog() }));
