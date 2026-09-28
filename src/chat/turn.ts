@@ -34,6 +34,8 @@ type AiChatResponse = {
   response?: string;
   output_text?: string;
   tool_calls?: ToolCall[];
+  id?: string;
+  output?: Array<Record<string, unknown>>;
   choices?: Array<{
     message?: {
       role?: string;
@@ -43,36 +45,157 @@ type AiChatResponse = {
   }>;
 };
 
+type AiRunOptions = {
+  gateway?: { id: string };
+};
+
+function gatewayOptions(env: Env): AiRunOptions | undefined {
+  const id = (env.AI_GATEWAY_ID || "default").trim();
+  if (!id) return undefined;
+  return { gateway: { id } };
+}
+
 function extractAssistant(res: AiChatResponse): {
   content: string;
   toolCalls: ToolCall[];
+  responseId?: string;
 } {
   const choice = res.choices?.[0]?.message;
   if (choice) {
     return {
       content: (choice.content ?? "").toString(),
       toolCalls: choice.tool_calls ?? [],
+      responseId: res.id,
     };
   }
+
+  // Responses API: walk output[] for message + function_call items
+  if (Array.isArray(res.output)) {
+    const texts: string[] = [];
+    const toolCalls: ToolCall[] = [];
+    for (const item of res.output) {
+      const type = String(item.type || "");
+      if (type === "message") {
+        const content = item.content;
+        if (Array.isArray(content)) {
+          for (const part of content) {
+            if (
+              part &&
+              typeof part === "object" &&
+              (part as { type?: string }).type === "output_text" &&
+              typeof (part as { text?: string }).text === "string"
+            ) {
+              texts.push((part as { text: string }).text);
+            }
+          }
+        } else if (typeof content === "string") {
+          texts.push(content);
+        }
+      } else if (type === "function_call") {
+        const name = String(item.name || "");
+        const args =
+          typeof item.arguments === "string"
+            ? item.arguments
+            : JSON.stringify(item.arguments ?? {});
+        const id = String(item.call_id || item.id || `call_${toolCalls.length}`);
+        if (name) {
+          toolCalls.push({
+            id,
+            type: "function",
+            function: { name, arguments: args },
+          });
+        }
+      }
+    }
+    if (texts.length > 0 || toolCalls.length > 0) {
+      return {
+        content: texts.join("\n").trim(),
+        toolCalls,
+        responseId: res.id,
+      };
+    }
+  }
+
   return {
     content: (res.output_text ?? res.response ?? "").toString(),
     toolCalls: res.tool_calls ?? [],
+    responseId: res.id,
   };
 }
 
-function aiRunParams(model: string, messages: AiMessage[]): Record<string, unknown> {
-  const tools = toolsForAi();
-  // OpenAI third-party models on Workers AI prefer Chat Completions field names.
-  if (model.startsWith("openai/")) {
+function responsesTools(): Array<Record<string, unknown>> {
+  return toolsForAi().map((t) => ({
+    type: "function",
+    name: t.function.name,
+    description: t.function.description,
+    parameters: t.function.parameters,
+  }));
+}
+
+/** Build Responses API payload (primary for openai/gpt-6-luna). */
+function responsesParams(
+  messages: AiMessage[],
+  previousResponseId?: string,
+  toolOutputs?: Array<{ call_id: string; output: string }>,
+): Record<string, unknown> {
+  const system = messages.find((m) => m.role === "system")?.content;
+  const nonSystem = messages.filter((m) => m.role !== "system");
+
+  if (previousResponseId && toolOutputs && toolOutputs.length > 0) {
     return {
-      messages,
-      tools,
-      max_completion_tokens: 1024,
+      previous_response_id: previousResponseId,
+      input: toolOutputs.map((o) => ({
+        type: "function_call_output",
+        call_id: o.call_id,
+        output: o.output,
+      })),
+      tools: responsesTools(),
+      max_output_tokens: 1024,
+      ...(system ? { instructions: system } : {}),
     };
   }
+
+  const input = nonSystem.map((m) => {
+    if (m.role === "tool") {
+      return {
+        type: "function_call_output",
+        call_id: m.tool_call_id || "unknown",
+        output: m.content,
+      };
+    }
+    return {
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.content,
+    };
+  });
+
+  return {
+    ...(system ? { instructions: system } : {}),
+    input,
+    tools: responsesTools(),
+    max_output_tokens: 1024,
+  };
+}
+
+/** Chat Completions payload (Luna also supports this). */
+function chatCompletionsParams(
+  messages: AiMessage[],
+  includeTools: boolean,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    messages,
+    max_completion_tokens: 1024,
+  };
+  if (includeTools) {
+    params.tools = toolsForAi();
+  }
+  return params;
+}
+
+function workersAiParams(messages: AiMessage[]): Record<string, unknown> {
   return {
     messages,
-    tools,
+    tools: toolsForAi(),
     max_tokens: 1024,
   };
 }
@@ -82,6 +205,50 @@ function parseArgs(raw: string): Record<string, unknown> {
     return JSON.parse(raw || "{}") as Record<string, unknown>;
   } catch {
     return {};
+  }
+}
+
+function isUserInputError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b7003\b/.test(msg) || /user input error/i.test(msg);
+}
+
+async function runModel(
+  env: Env,
+  model: string,
+  messages: AiMessage[],
+  previousResponseId?: string,
+  toolOutputs?: Array<{ call_id: string; output: string }>,
+): Promise<AiChatResponse> {
+  const opts = gatewayOptions(env);
+  const run = (params: Record<string, unknown>) =>
+    env.AI.run(
+      model as Parameters<Ai["run"]>[0],
+      params,
+      opts as Parameters<Ai["run"]>[2],
+    ) as Promise<AiChatResponse>;
+
+  if (!model.startsWith("openai/")) {
+    return run(workersAiParams(messages));
+  }
+
+  // Prefer Responses API for Luna (documented primary path).
+  try {
+    return await run(responsesParams(messages, previousResponseId, toolOutputs));
+  } catch (err) {
+    // If we're mid tool-loop, don't silently switch formats.
+    if (previousResponseId || (toolOutputs && toolOutputs.length > 0)) {
+      throw err;
+    }
+    if (!isUserInputError(err)) throw err;
+  }
+
+  // Fallback: Chat Completions with tools, then without tools.
+  try {
+    return await run(chatCompletionsParams(messages, true));
+  } catch (err) {
+    if (!isUserInputError(err)) throw err;
+    return run(chatCompletionsParams(messages, false));
   }
 }
 
@@ -197,15 +364,22 @@ export async function runChatTurn(
 
   const model = env.AI_MODEL || "openai/gpt-6-luna";
   const maxLoops = 4;
+  let previousResponseId: string | undefined;
+  let pendingToolOutputs: Array<{ call_id: string; output: string }> | undefined;
 
   try {
     for (let i = 0; i < maxLoops; i++) {
-      const raw = (await env.AI.run(
-        model as Parameters<Ai["run"]>[0],
-        aiRunParams(model, messages),
-      )) as AiChatResponse;
+      const raw = await runModel(
+        env,
+        model,
+        messages,
+        previousResponseId,
+        pendingToolOutputs,
+      );
+      pendingToolOutputs = undefined;
 
-      const { content, toolCalls } = extractAssistant(raw);
+      const { content, toolCalls, responseId } = extractAssistant(raw);
+      if (responseId) previousResponseId = responseId;
 
       if (toolCalls.length > 0) {
         messages.push({
@@ -214,6 +388,7 @@ export async function runChatTurn(
           tool_calls: toolCalls,
         });
 
+        const outputs: Array<{ call_id: string; output: string }> = [];
         for (const call of toolCalls) {
           const name = call.function.name;
           const args = parseArgs(call.function.arguments);
@@ -238,13 +413,16 @@ export async function runChatTurn(
             result,
           });
 
+          const serialized = JSON.stringify(result);
           messages.push({
             role: "tool",
             tool_call_id: call.id,
             name,
-            content: JSON.stringify(result),
+            content: serialized,
           });
+          outputs.push({ call_id: call.id, output: serialized });
         }
+        pendingToolOutputs = outputs;
         continue;
       }
 

@@ -8,6 +8,11 @@ export interface Env {
   SESSION_TTL_DAYS: string;
   AI_MODEL: string;
   /**
+   * AI Gateway id for Workers AI / third-party models (Unified Billing credits).
+   * Defaults to `default` when unset.
+   */
+  AI_GATEWAY_ID?: string;
+  /**
    * HMAC secret for signing session cookies. When set, cookies are
    * `sessionId.signature` and must validate before D1 lookup.
    */

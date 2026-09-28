@@ -26,7 +26,8 @@
   "vars": {
     "APP_NAME": "Atajo",
     "SESSION_TTL_DAYS": "30",
-    "AI_MODEL": "openai/gpt-6-luna"
+    "AI_MODEL": "openai/gpt-6-luna",
+    "AI_GATEWAY_ID": "default"
   },
   "observability": {
     "enabled": true
