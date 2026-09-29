@@ -117,12 +117,44 @@ body {
   max-width: 28rem;
 }
 
+.auth-mode {
+  display: flex;
+  gap: 0.35rem;
+  margin: 1.1rem 0 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.mode-btn {
+  flex: 1;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mode-btn.is-active {
+  background: rgba(196, 163, 90, 0.22);
+  color: var(--ink);
+}
+
 .auth label {
   display: grid;
   gap: 0.35rem;
   margin: 0.85rem 0;
   font-size: 0.9rem;
   color: var(--muted);
+}
+
+.auth label .hint {
+  font-weight: 400;
+  opacity: 0.75;
 }
 
 .auth input,
@@ -141,8 +173,8 @@ body {
   margin-top: 1rem;
 }
 
-.auth-actions .ghost {
-  background: transparent;
+.auth-actions button {
+  width: 100%;
 }
 
 .error {

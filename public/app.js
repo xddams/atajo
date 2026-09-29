@@ -113,9 +113,29 @@ async function boot() {
   }
 }
 
+function setAuthMode(mode) {
+  state.authMode = mode === "register" ? "register" : "login";
+  const isRegister = state.authMode === "register";
+  const nameField = $("#display-name-field");
+  nameField.hidden = !isRegister;
+  if (!isRegister) {
+    const nameInput = nameField.querySelector('input[name="display_name"]');
+    if (nameInput) nameInput.value = "";
+  }
+  $("#auth-password").autocomplete = isRegister ? "new-password" : "current-password";
+  $("#auth-submit").textContent = isRegister ? "Create account" : "Sign in";
+  for (const btn of document.querySelectorAll(".mode-btn")) {
+    const active = btn.dataset.mode === state.authMode;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  }
+}
+
 $("#auth-form").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-mode]");
-  if (btn) state.authMode = btn.dataset.mode;
+  if (!btn) return;
+  e.preventDefault();
+  setAuthMode(btn.dataset.mode);
 });
 
 $("#auth-form").addEventListener("submit", async (e) => {
@@ -124,8 +144,11 @@ $("#auth-form").addEventListener("submit", async (e) => {
   const payload = {
     email: String(fd.get("email") || ""),
     password: String(fd.get("password") || ""),
-    display_name: String(fd.get("display_name") || "") || undefined,
   };
+  if (state.authMode === "register") {
+    const name = String(fd.get("display_name") || "").trim();
+    if (name) payload.display_name = name;
+  }
   const err = $("#auth-error");
   err.hidden = true;
   try {
@@ -216,6 +239,8 @@ $("#pending-list").addEventListener("click", async (e) => {
 $("#logout-btn").addEventListener("click", async () => {
   await api("/api/auth/logout", { method: "POST", body: "{}" });
   state.user = null;
+  $("#user-chip").textContent = "";
+  setAuthMode("login");
   showAuth(true);
   $("#drawer").hidden = true;
 });
@@ -232,4 +257,5 @@ $("#radar-btn").addEventListener("click", async () => {
   msgs.scrollTop = msgs.scrollHeight;
 });
 
+setAuthMode("login");
 boot();
