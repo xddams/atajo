@@ -55,22 +55,36 @@
           <h1>Atajo</h1>
           <p class="lede">Your calm shortcut — chat that remembers and acts with care.</p>
           <form id="auth-form">
+            <div class="auth-mode" role="tablist" aria-label="Auth mode">
+              <button type="button" role="tab" data-mode="login" class="mode-btn is-active" aria-selected="true">
+                Sign in
+              </button>
+              <button type="button" role="tab" data-mode="register" class="mode-btn" aria-selected="false">
+                Create account
+              </button>
+            </div>
             <label>
               Email
               <input name="email" type="email" required autocomplete="email" />
             </label>
             <label>
               Password
-              <input name="password" type="password" required minlength="8" autocomplete="current-password" />
+              <input
+                id="auth-password"
+                name="password"
+                type="password"
+                required
+                minlength="8"
+                autocomplete="current-password"
+              />
             </label>
-            <label class="optional">
-              Display name (register)
+            <label id="display-name-field" class="optional" hidden>
+              Display name <span class="hint">(optional)</span>
               <input name="display_name" type="text" autocomplete="nickname" />
             </label>
             <p id="auth-error" class="error" hidden></p>
             <div class="auth-actions">
-              <button type="submit" data-mode="login">Sign in</button>
-              <button type="submit" data-mode="register" class="ghost">Create account</button>
+              <button type="submit" id="auth-submit">Sign in</button>
             </div>
           </form>
         </section>
